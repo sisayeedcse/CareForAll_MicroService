@@ -1,0 +1,15 @@
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+header {
+  background: #fafafa;
+}
+main {
+  max-width: 900px;
+  margin: 24px auto;
+}
+a {
+  color: #0366d6;
+  text-decoration: none;
+}
