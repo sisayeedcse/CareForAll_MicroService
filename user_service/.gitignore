@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# env & runtime secrets
+.env
+.env.*
+
+# logs & tmp
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+tmp/
+
+# coverage & build artifacts
+coverage/
+dist/
+build/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.vscode/
