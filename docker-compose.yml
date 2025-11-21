@@ -1,0 +1,133 @@
+# Docker Compose stack for CareForAll microservices
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: careforall-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: careforall
+      MYSQL_DATABASE: careforall
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - careforall-net
+
+  user-service:
+    build:
+      context: ./services/user_service
+    container_name: user-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: careforall
+      DB_NAME: user_service_microservice
+      DB_PORT: 3306
+      JWT_SECRET: supersecretjwt
+    ports:
+      - "3001:3001"
+    networks:
+      - careforall-net
+
+  campaign-service:
+    build:
+      context: ./services/campaign_service
+    container_name: campaign-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: careforall
+      DB_NAME: campaign_service
+      DB_PORT: 3306
+      JWT_SECRET: supersecretjwt
+    ports:
+      - "3002:3002"
+    networks:
+      - careforall-net
+
+  pledge-service:
+    build:
+      context: ./services/pledge-service
+    container_name: pledge-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: careforall
+      DB_NAME: pledge_service
+      DB_PORT: 3306
+    ports:
+      - "3003:3003"
+    networks:
+      - careforall-net
+
+  payment-service:
+    build:
+      context: ./services/payment-service
+    container_name: payment-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: careforall
+      DB_NAME: payment_service
+      DB_PORT: 3306
+      JWT_SECRET: supersecretjwt
+      STRIPE_SECRET_KEY: sk_test_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_dummy
+    ports:
+      - "3004:3004"
+    networks:
+      - careforall-net
+
+  nginx:
+    image: nginx:1.27
+    container_name: careforall-gateway
+    depends_on:
+      user-service:
+        condition: service_started
+      campaign-service:
+        condition: service_started
+      pledge-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    networks:
+      - careforall-net
+
+networks:
+  careforall-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
