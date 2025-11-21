@@ -39,6 +39,23 @@ async function createPaymentsTable() {
   `);
 }
 
+async function createOutboxTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS outbox_events (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      event_key CHAR(36) UNIQUE,
+      event_type VARCHAR(100) NOT NULL,
+      payload_json TEXT NOT NULL,
+      status ENUM('PENDING','DELIVERED','FAILED') DEFAULT 'PENDING',
+      attempts INT DEFAULT 0,
+      next_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_error TEXT,
+      delivered_at DATETIME NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
+  `);
+}
+
 async function initDb() {
   if (pool) {
     return pool;
@@ -58,6 +75,7 @@ async function initDb() {
   });
 
   await createPaymentsTable();
+  await createOutboxTable();
   console.log("Payment database initialized.");
   return pool;
 }

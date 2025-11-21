@@ -77,6 +77,7 @@ services:
       DB_PASSWORD: careforall
       DB_NAME: pledge_service
       DB_PORT: 3306
+      EVENT_DISPATCH_URL: http://campaign-service:3002/campaigns/events
     ports:
       - "3003:3003"
     networks:
@@ -100,6 +101,7 @@ services:
       JWT_SECRET: supersecretjwt
       STRIPE_SECRET_KEY: sk_test_dummy
       STRIPE_WEBHOOK_SECRET: whsec_dummy
+      EVENT_DISPATCH_URL: http://campaign-service:3002/campaigns/events
     ports:
       - "3004:3004"
     networks:

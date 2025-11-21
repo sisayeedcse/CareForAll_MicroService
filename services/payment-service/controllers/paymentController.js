@@ -2,12 +2,21 @@ const Stripe = require("stripe");
 const dotenv = require("dotenv");
 
 const { getPool } = require("../config/db");
+const { enqueueOutboxEvent } = require("../utils/outbox");
 
 dotenv.config();
 
 const stripeSecret = process.env.STRIPE_SECRET_KEY || "";
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 const stripe = new Stripe(stripeSecret, { apiVersion: "2024-06-20" });
+
+function toNumberOrNull(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
 function buildIdempotencyKey(userId, pledgeId, campaignId, amount) {
   const pledgeComponent = pledgeId ? `pledge-${pledgeId}` : "pledge-none";
@@ -102,6 +111,17 @@ exports.chargePayment = async (req, res) => {
       ["SUCCESS", paymentIntent.id, paymentId]
     );
 
+    await enqueueOutboxEvent(pool, "PAYMENT_CAPTURED", {
+      payment_id: paymentId,
+      transaction_id: paymentIntent.id,
+      pledge_id: pledgeId,
+      campaign_id: campaignId,
+      user_id: userId,
+      amount: numericAmount,
+      status: "SUCCESS",
+      processed_at: new Date().toISOString(),
+    });
+
     return res.status(201).json({
       status: "SUCCESS",
       transactionId: paymentIntent.id,
@@ -114,6 +134,18 @@ exports.chargePayment = async (req, res) => {
       "UPDATE payments SET status = ?, transaction_id = ? WHERE id = ?",
       ["FAILED", error?.payment_intent?.id || null, paymentId]
     );
+
+    await enqueueOutboxEvent(pool, "PAYMENT_FAILED", {
+      payment_id: paymentId,
+      transaction_id: error?.payment_intent?.id || null,
+      pledge_id: pledgeId,
+      campaign_id: campaignId,
+      user_id: userId,
+      amount: numericAmount,
+      status: "FAILED",
+      error: error.message,
+      processed_at: new Date().toISOString(),
+    });
 
     return res.status(502).json({
       status: "FAILED",
@@ -155,11 +187,34 @@ exports.handleStripeWebhook = async (req, res) => {
         "UPDATE payments SET status = ?, transaction_id = ? WHERE id = ?",
         ["SUCCESS", paymentIntent.id, paymentId]
       );
+
+      await enqueueOutboxEvent(pool, "PAYMENT_CAPTURED", {
+        payment_id: Number(paymentId),
+        transaction_id: paymentIntent.id,
+        pledge_id: toNumberOrNull(paymentIntent.metadata?.pledgeId),
+        campaign_id: toNumberOrNull(paymentIntent.metadata?.campaignId),
+        user_id: toNumberOrNull(paymentIntent.metadata?.userId),
+        amount: Number(paymentIntent.amount ?? 0) / 100,
+        status: "SUCCESS",
+        processed_at: new Date().toISOString(),
+      });
     } else if (event.type === "payment_intent.payment_failed") {
       await pool.query(
         "UPDATE payments SET status = ?, transaction_id = ? WHERE id = ?",
         ["FAILED", paymentIntent.id, paymentId]
       );
+
+      await enqueueOutboxEvent(pool, "PAYMENT_FAILED", {
+        payment_id: Number(paymentId),
+        transaction_id: paymentIntent.id,
+        pledge_id: toNumberOrNull(paymentIntent.metadata?.pledgeId),
+        campaign_id: toNumberOrNull(paymentIntent.metadata?.campaignId),
+        user_id: toNumberOrNull(paymentIntent.metadata?.userId),
+        amount: Number(paymentIntent.amount ?? 0) / 100,
+        status: "FAILED",
+        error: event.data?.object?.last_payment_error?.message,
+        processed_at: new Date().toISOString(),
+      });
     }
   } catch (dbError) {
     console.error("Failed to update payment from webhook:", dbError.message);

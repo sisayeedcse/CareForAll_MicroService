@@ -5,6 +5,7 @@ const dotenv = require("dotenv");
 const { initDb } = require("./config/db");
 const paymentRoutes = require("./routes/paymentRoutes");
 const { handleStripeWebhook } = require("./controllers/paymentController");
+const { startOutboxDispatcher } = require("./workers/outboxDispatcher");
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.get("/health", (req, res) => {
 
 initDb()
   .then(() => {
+    startOutboxDispatcher();
     app.listen(PORT, () => {
       console.log(`Payment service running on port ${PORT}`);
     });

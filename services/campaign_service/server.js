@@ -1,9 +1,10 @@
-const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
+const express = require("express");
+const cors = require("cors");
+const dotenv = require("dotenv");
 
-const campaignRoutes = require('./routes/campaignRoutes');
-const { initDb } = require('./config/db');
+const campaignRoutes = require("./routes/campaignRoutes");
+const eventRoutes = require("./routes/eventRoutes");
+const { initDb } = require("./config/db");
 
 dotenv.config();
 
@@ -12,7 +13,8 @@ const PORT = process.env.PORT || 3002;
 
 app.use(cors());
 app.use(express.json());
-app.use('/campaigns', campaignRoutes);
+app.use("/campaigns/events", eventRoutes);
+app.use("/campaigns", campaignRoutes);
 
 const startServer = async () => {
   try {
@@ -21,7 +23,7 @@ const startServer = async () => {
       console.log(`Campaign service running on port ${PORT}`);
     });
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    console.error("Failed to initialize database:", error);
     process.exit(1);
   }
 };

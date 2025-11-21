@@ -51,12 +51,82 @@ async function createTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS outbox_events (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      event_key CHAR(36) UNIQUE,
       event_type VARCHAR(100),
       payload_json TEXT,
-      processed BOOLEAN DEFAULT FALSE,
+      status ENUM('PENDING','DELIVERED','FAILED') DEFAULT 'PENDING',
+      attempts INT DEFAULT 0,
+      next_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_error TEXT,
+      delivered_at DATETIME NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB;
   `);
+
+  await pool.query(
+    `ALTER TABLE outbox_events
+       ADD COLUMN IF NOT EXISTS event_key CHAR(36) NULL,
+       ADD COLUMN IF NOT EXISTS status ENUM('PENDING','DELIVERED','FAILED') DEFAULT 'PENDING',
+       ADD COLUMN IF NOT EXISTS attempts INT DEFAULT 0,
+       ADD COLUMN IF NOT EXISTS next_attempt_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+       ADD COLUMN IF NOT EXISTS last_error TEXT,
+       ADD COLUMN IF NOT EXISTS delivered_at DATETIME NULL,
+       ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+  );
+
+  // Ensure legacy rows get unique event keys before we enforce constraints
+  const [missingKeys] = await pool.query(
+    "SELECT id FROM outbox_events WHERE event_key IS NULL OR event_key = ''"
+  );
+
+  for (const row of missingKeys) {
+    await pool.query(
+      "UPDATE outbox_events SET event_key = UUID() WHERE id = ?",
+      [row.id]
+    );
+  }
+
+  const [duplicateKeys] = await pool.query(`
+    SELECT event_key
+      FROM outbox_events
+     WHERE event_key IS NOT NULL AND event_key <> ''
+  GROUP BY event_key
+    HAVING COUNT(*) > 1
+  `);
+
+  for (const { event_key } of duplicateKeys) {
+    const [rows] = await pool.query(
+      "SELECT id FROM outbox_events WHERE event_key = ? ORDER BY id ASC",
+      [event_key]
+    );
+
+    const [, ...duplicates] = rows;
+    for (const duplicate of duplicates) {
+      await pool.query(
+        "UPDATE outbox_events SET event_key = UUID() WHERE id = ?",
+        [duplicate.id]
+      );
+    }
+  }
+
+  await pool.query(
+    `ALTER TABLE outbox_events
+      MODIFY COLUMN event_key CHAR(36) NOT NULL,
+       MODIFY COLUMN event_type VARCHAR(100) NOT NULL,
+       MODIFY COLUMN payload_json TEXT NOT NULL`
+  );
+
+  await pool.query("ALTER TABLE outbox_events DROP COLUMN IF EXISTS processed");
+
+  try {
+    await pool.query(
+      "ALTER TABLE outbox_events ADD UNIQUE KEY event_key_unique (event_key)"
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_KEYNAME") {
+      throw error;
+    }
+  }
 }
 
 async function initDB() {
