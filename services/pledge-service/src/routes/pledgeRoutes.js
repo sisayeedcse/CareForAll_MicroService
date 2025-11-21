@@ -3,6 +3,8 @@ const { getPool } = require("../config/db");
 const { canTransition } = require("../utils/stateMachine");
 const { enqueueOutboxEvent } = require("../utils/outbox");
 const idempotencyMiddleware = require("../middleware/idempotency");
+const logger = require("../utils/logger");
+const { pledgeCreations } = require("../utils/metrics");
 
 const router = express.Router();
 
@@ -42,6 +44,7 @@ router.post("/pledges", async (req, res) => {
     // 4. COMMIT (Save everything permanently)
     await connection.commit();
 
+    pledgeCreations.inc();
     res.status(201).json({
       success: true,
       id: newPledgeId,
@@ -53,9 +56,12 @@ router.post("/pledges", async (req, res) => {
     try {
       await connection.rollback();
     } catch (rollbackError) {
-      console.error("Rollback failed:", rollbackError.message);
+      logger.error(
+        { err: rollbackError },
+        "Rollback failed after pledge create error"
+      );
     }
-    console.error("Transaction Failed:", error);
+    logger.error({ err: error }, "Pledge creation transaction failed");
     res.status(500).json({ error: "Internal Server Error" });
   } finally {
     connection.release(); // Always release connection back to pool
@@ -83,7 +89,10 @@ router.post("/webhooks/payment", async (req, res) => {
 
     // 2. Validate State Transition
     if (!canTransition(currentStatus, status)) {
-      console.log(`Ignored invalid transition ${currentStatus} -> ${status}`);
+      logger.warn(
+        { pledgeId: pledge_id, from: currentStatus, to: status },
+        "Ignored invalid pledge transition"
+      );
       return res
         .status(200)
         .json({ message: "Ignored: Invalid state transition" });
@@ -117,9 +126,15 @@ router.post("/webhooks/payment", async (req, res) => {
     try {
       await connection.rollback();
     } catch (rollbackError) {
-      console.error("Rollback failed:", rollbackError.message);
+      logger.error(
+        { err: rollbackError },
+        "Rollback failed after webhook error"
+      );
     }
-    console.error("Webhook Error:", error);
+    logger.error(
+      { err: error, pledgeId: pledge_id },
+      "Webhook processing error"
+    );
     res.status(500).json({ error: "Webhook processing failed" });
   } finally {
     connection.release();

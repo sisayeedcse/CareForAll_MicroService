@@ -6,6 +6,8 @@ const { initDb } = require("./config/db");
 const paymentRoutes = require("./routes/paymentRoutes");
 const { handleStripeWebhook } = require("./controllers/paymentController");
 const { startOutboxDispatcher } = require("./workers/outboxDispatcher");
+const logger = require("./utils/logger");
+const { metricsMiddleware, metricsHandler } = require("./utils/metrics");
 
 dotenv.config();
 
@@ -13,6 +15,8 @@ const app = express();
 const PORT = process.env.PORT || 3004;
 
 app.use(cors());
+app.use(metricsMiddleware);
+app.get("/metrics", metricsHandler);
 
 // Stripe requires the raw body for webhook signature verification. Register before json parser.
 app.post(
@@ -32,10 +36,10 @@ initDb()
   .then(() => {
     startOutboxDispatcher();
     app.listen(PORT, () => {
-      console.log(`Payment service running on port ${PORT}`);
+      logger.info({ port: PORT }, "Payment service running");
     });
   })
   .catch((error) => {
-    console.error("Failed to initialize database:", error);
+    logger.error({ err: error }, "Failed to initialize database");
     process.exit(1);
   });

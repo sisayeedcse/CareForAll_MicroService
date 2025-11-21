@@ -1,0 +1,69 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Payment Success Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(careforall_payment_charge_total{status='success'}[5m])) / sum(rate(careforall_payment_charge_total[5m]))",
+          "legendFormat": "success rate",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "API Latency (95th percentile)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(careforall_campaign_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "campaign",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(careforall_pledge_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "pledge",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(careforall_payment_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "payment",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(careforall_user_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "user",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent Logs",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki-ds" },
+      "targets": [
+        {
+          "expr": "{service=~\"(user|campaign|pledge|payment)_service\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "title": "CareForAll Overview",
+  "version": 1
+}

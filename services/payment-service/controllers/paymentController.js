@@ -3,6 +3,8 @@ const dotenv = require("dotenv");
 
 const { getPool } = require("../config/db");
 const { enqueueOutboxEvent } = require("../utils/outbox");
+const logger = require("../utils/logger");
+const { paymentAttempts } = require("../utils/metrics");
 
 dotenv.config();
 
@@ -121,6 +123,7 @@ exports.chargePayment = async (req, res) => {
       status: "SUCCESS",
       processed_at: new Date().toISOString(),
     });
+    paymentAttempts.inc({ status: "success" });
 
     return res.status(201).json({
       status: "SUCCESS",
@@ -128,7 +131,7 @@ exports.chargePayment = async (req, res) => {
       paymentId,
     });
   } catch (error) {
-    console.error("Stripe charge failed:", error.message);
+    logger.error({ err: error, paymentId }, "Stripe charge failed");
 
     await pool.query(
       "UPDATE payments SET status = ?, transaction_id = ? WHERE id = ?",
@@ -147,6 +150,7 @@ exports.chargePayment = async (req, res) => {
       processed_at: new Date().toISOString(),
     });
 
+    paymentAttempts.inc({ status: "failed" });
     return res.status(502).json({
       status: "FAILED",
       paymentId,
@@ -158,7 +162,7 @@ exports.chargePayment = async (req, res) => {
 
 exports.handleStripeWebhook = async (req, res) => {
   if (!webhookSecret) {
-    console.error("STRIPE_WEBHOOK_SECRET is not configured.");
+    logger.error("STRIPE_WEBHOOK_SECRET is not configured.");
     return res.status(500).json({ message: "Webhook secret not configured" });
   }
 
@@ -168,7 +172,7 @@ exports.handleStripeWebhook = async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
-    console.error("Webhook signature verification failed:", err.message);
+    logger.error({ err }, "Webhook signature verification failed");
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -177,7 +181,7 @@ exports.handleStripeWebhook = async (req, res) => {
   const pool = getPool();
 
   if (!paymentId) {
-    console.warn("Received webhook without paymentId metadata.");
+    logger.warn("Received webhook without paymentId metadata.");
     return res.json({ received: true });
   }
 
@@ -217,7 +221,7 @@ exports.handleStripeWebhook = async (req, res) => {
       });
     }
   } catch (dbError) {
-    console.error("Failed to update payment from webhook:", dbError.message);
+    logger.error({ err: dbError }, "Failed to update payment from webhook");
     return res.status(500).json({ message: "Failed to update payment status" });
   }
 

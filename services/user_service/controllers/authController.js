@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 
 const { getPool } = require("../config/db");
+const logger = require("../utils/logger");
 
 dotenv.config();
 
@@ -37,7 +38,7 @@ exports.register = async (req, res) => {
 
     return res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
-    console.error("Error registering user:", error);
+    logger.error({ err: error }, "Error registering user");
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -82,7 +83,7 @@ exports.login = async (req, res) => {
 
     return res.status(200).json({ message: "Login successful", token });
   } catch (error) {
-    console.error("Error logging in:", error);
+    logger.error({ err: error }, "Error logging in");
     return res.status(500).json({ message: "Internal server error" });
   }
 };

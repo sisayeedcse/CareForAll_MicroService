@@ -126,6 +126,20 @@ services:
     networks:
       - careforall-net
 
+  frontend:
+    build:
+      context: ./frontend/app
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    container_name: careforall-frontend
+    depends_on:
+      nginx:
+        condition: service_started
+    ports:
+      - "5173:80"
+    networks:
+      - careforall-net
+
 networks:
   careforall-net:
     driver: bridge

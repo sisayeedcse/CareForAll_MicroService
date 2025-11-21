@@ -1,5 +1,6 @@
 const { getPool } = require("../config/db");
 const { ensureRollupRow } = require("../services/rollupService");
+const logger = require("../utils/logger");
 
 const VALID_STATUSES = ["draft", "active", "closed"];
 
@@ -73,7 +74,7 @@ async function createCampaign(req, res) {
     );
     return res.status(201).json(rows[0]);
   } catch (error) {
-    console.error("Failed to create campaign:", error);
+    logger.error({ err: error }, "Failed to create campaign");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -95,7 +96,7 @@ async function getCampaigns(req, res) {
     ORDER BY c.created_at DESC`);
     return res.json(rows);
   } catch (error) {
-    console.error("Failed to fetch campaigns:", error);
+    logger.error({ err: error }, "Failed to fetch campaigns");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -124,7 +125,7 @@ async function getCampaignById(req, res) {
 
     return res.json(rows[0]);
   } catch (error) {
-    console.error("Failed to fetch campaign:", error);
+    logger.error({ err: error }, "Failed to fetch campaign");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -177,11 +178,9 @@ async function updateCampaign(req, res) {
 
     if (status !== undefined) {
       if (!VALID_STATUSES.includes(status)) {
-        return res
-          .status(400)
-          .json({
-            message: `status must be one of: ${VALID_STATUSES.join(", ")}`,
-          });
+        return res.status(400).json({
+          message: `status must be one of: ${VALID_STATUSES.join(", ")}`,
+        });
       }
       updates.push("status = ?");
       values.push(status);
@@ -214,7 +213,7 @@ async function updateCampaign(req, res) {
     );
     return res.json(rows[0]);
   } catch (error) {
-    console.error("Failed to update campaign:", error);
+    logger.error({ err: error }, "Failed to update campaign");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -246,7 +245,64 @@ async function deleteCampaign(req, res) {
     ]);
     return res.json({ message: "Campaign deleted successfully" });
   } catch (error) {
-    console.error("Failed to delete campaign:", error);
+    logger.error({ err: error }, "Failed to delete campaign");
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function getCampaignDonations(req, res) {
+  const pool = getPool();
+  const { id } = req.params;
+  const limitParam = Number(req.query.limit) || 25;
+  const offsetParam = Number(req.query.offset) || 0;
+  const limit = Math.max(1, Math.min(limitParam, 100));
+  const offset = Math.max(0, offsetParam);
+
+  try {
+    const [campaignRows] = await pool.query(
+      "SELECT id FROM campaigns WHERE id = ?",
+      [id]
+    );
+
+    if (!campaignRows.length) {
+      return res.status(404).json({ message: "Campaign not found" });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT id,
+              pledge_id,
+              payment_id,
+              user_id,
+              amount,
+              status,
+              source,
+              occurred_at,
+              metadata_json
+         FROM donation_history
+        WHERE campaign_id = ?
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT ? OFFSET ?`,
+      [id, limit, offset]
+    );
+
+    const [countRows] = await pool.query(
+      "SELECT COUNT(*) AS total FROM donation_history WHERE campaign_id = ?",
+      [id]
+    );
+
+    const total = countRows[0]?.total ?? 0;
+
+    return res.json({
+      data: rows,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + rows.length < total,
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to fetch donation history");
     return res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -257,4 +313,5 @@ module.exports = {
   getCampaignById,
   updateCampaign,
   deleteCampaign,
+  getCampaignDonations,
 };

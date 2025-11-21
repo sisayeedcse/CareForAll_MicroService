@@ -1,4 +1,5 @@
 const { getPool } = require("../config/db");
+const logger = require("../utils/logger");
 const {
   ensureRollupRow,
   moveAcrossBuckets,
@@ -196,7 +197,7 @@ async function ingestEvent(req, res) {
     return res.status(202).json({ status: "processed" });
   } catch (error) {
     await connection.rollback();
-    console.error("[campaign-service] Failed to ingest event", eventId, error);
+    logger.error({ err: error, eventId }, "Failed to ingest campaign event");
     return res.status(500).json({ message: "Failed to ingest event" });
   } finally {
     connection.release();

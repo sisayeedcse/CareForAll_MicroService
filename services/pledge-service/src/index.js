@@ -3,11 +3,15 @@ const express = require("express");
 const { initDB } = require("./config/db");
 const pledgeRoutes = require("./routes/pledgeRoutes");
 const { startOutboxDispatcher } = require("./workers/outboxDispatcher");
+const logger = require("./utils/logger");
+const { metricsMiddleware, metricsHandler } = require("./utils/metrics");
 
 const app = express();
 const PORT = process.env.PORT || 3003;
 
 app.use(express.json());
+app.use(metricsMiddleware);
+app.get("/metrics", metricsHandler);
 
 // Initialize DB before starting server
 initDB()
@@ -16,9 +20,9 @@ initDB()
     startOutboxDispatcher();
 
     app.listen(PORT, () => {
-      console.log(`Pledge Service running on http://localhost:${PORT}`);
+      logger.info({ port: PORT }, "Pledge service running");
     });
   })
   .catch((err) => {
-    console.error("Failed to start server due to DB error");
+    logger.error({ err }, "Failed to start pledge service due to DB error");
   });
